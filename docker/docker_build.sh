@@ -1,0 +1,1 @@
+docker build -t aobazero_eval .
