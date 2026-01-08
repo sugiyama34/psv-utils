@@ -22,4 +22,4 @@ RUN python -m pip install --upgrade pip && \
 
 COPY . /workspace
 
-CMD /bin/bash
+CMD ["/bin/bash"]
