@@ -26,7 +26,7 @@ def main():
 
     p = argparse.ArgumentParser()
     p.add_argument("--file-id", required=True)
-    p.add_argument("--port", required=True)
+    p.add_argument("--port", default=8100, type=int)
     p.add_argument("--out-dir", default=".")
     args = p.parse_args()
 
