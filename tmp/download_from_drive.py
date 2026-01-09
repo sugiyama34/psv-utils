@@ -43,7 +43,7 @@ def main():
         Path(TOKEN).write_text(creds.to_json())
     if not creds or not creds.valid:
         flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS, SCOPES)
-        creds = flow.run_local_server(open_browser=False, host="localhost", bind_addr="0.0.0.0", port=args.port)
+        creds = flow.run_local_server(open_browser=False, host="localhost", bind_addr="0.0.0.0", port=int(args.port))
         Path(TOKEN).write_text(creds.to_json())
 
     out_dir = Path(args.out_dir)
