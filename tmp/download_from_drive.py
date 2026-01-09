@@ -23,10 +23,10 @@ def main():
     STREAM_CHUNK = 8 * 1024 * 1024     # 8MB
     TIMEOUT = (10, 60)                 # (connect, read)
     RETRY_SLEEP = 5
-    PORT = 8765
 
     p = argparse.ArgumentParser()
     p.add_argument("--file-id", required=True)
+    p.add_argument("--port", required=True)
     p.add_argument("--out-dir", default=".")
     args = p.parse_args()
 
@@ -43,7 +43,7 @@ def main():
         Path(TOKEN).write_text(creds.to_json())
     if not creds or not creds.valid:
         flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS, SCOPES)
-        creds = flow.run_local_server(open_browser=False, host="localhost", bind_addr="0.0.0.0", port=PORT)
+        creds = flow.run_local_server(open_browser=False, host="localhost", bind_addr="0.0.0.0", port=args.port)
         Path(TOKEN).write_text(creds.to_json())
 
     out_dir = Path(args.out_dir)
