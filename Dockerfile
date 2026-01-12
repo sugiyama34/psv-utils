@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # FROM python:3.13-slim-bookworm
-FROM nvidia/cuda:12.9.1-cudnn-devel-ubuntu20.04
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 
 ARG PYTHON_VERSION=3.10
 
