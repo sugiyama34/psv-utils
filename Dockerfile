@@ -1,37 +1,30 @@
 # syntax=docker/dockerfile:1
 # FROM python:3.13-slim-bookworm
-FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
-
-ARG PYTHON_VERSION=3.10
+# FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
+# syntax=docker/dockerfile:1
+FROM nvcr.io/nvidia/tensorrt:25.01-py3
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1
-
-ENV DEBIAN_FRONTEND=noninteractive
-ENV LC_ALL="C.UTF-8"
-ENV LANG="C.UTF-8"
-ENV TZ=Asia/Tokyo
+    PIP_NO_CACHE_DIR=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    LC_ALL="C.UTF-8" \
+    LANG="C.UTF-8" \
+    TZ=Asia/Tokyo
 
 WORKDIR /workspace
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    python${PYTHON_VERSION} \
-    python3-pip \
-    python-is-python3 \
     ca-certificates \
     tzdata \
     curl \
     build-essential && \
     rm -rf /var/lib/apt/lists/*
 
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 && \
-    update-alternatives --set python3 /usr/bin/python${PYTHON_VERSION}
-
 COPY requirements.txt /app/requirements.txt
-RUN python -m pip install --upgrade pip && \
-    pip install -r /app/requirements.txt
+RUN python3 -m pip install --upgrade pip && \
+    python3 -m pip install -r /app/requirements.txt
 
 CMD ["/bin/bash"]
