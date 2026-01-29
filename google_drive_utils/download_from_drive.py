@@ -8,13 +8,10 @@ from pathlib import Path
 import requests
 from tqdm import tqdm
 
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
+from google_auth import get_drive_credentials, request_with_refresh
 
 
 def main():
-    SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
     CREDENTIALS = "secrets/credentials.json"
     TOKEN = "secrets/token.json"
 
@@ -30,31 +27,28 @@ def main():
     p.add_argument("--out-dir", default=".")
     args = p.parse_args()
 
-    if not os.path.exists(CREDENTIALS):
+    # token.json があれば非対話で利用（refresh も自動）
+    try:
+        creds = get_drive_credentials(
+            port=args.port, credentials_path=CREDENTIALS, token_path=TOKEN
+        )
+    except FileNotFoundError:
         print(f"[ERROR] {CREDENTIALS} が見つかりません。")
         sys.exit(1)
-
-    # token.json があれば非対話で利用（refresh も自動）
-    creds = None
-    if os.path.exists(TOKEN):
-        creds = Credentials.from_authorized_user_file(TOKEN, SCOPES)
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        Path(TOKEN).write_text(creds.to_json())
-    if not creds or not creds.valid:
-        flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS, SCOPES)
-        creds = flow.run_local_server(open_browser=False, host="localhost", bind_addr="0.0.0.0", port=int(args.port))
-        Path(TOKEN).write_text(creds.to_json())
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # メタデータ（name, size）
-    meta = requests.get(
-        f"{DRIVE_API}/{args.file_id}",
-        params={"fields": "name,size"},
-        headers={"Authorization": f"Bearer {creds.token}"},
-        timeout=TIMEOUT,
+    meta = request_with_refresh(
+        lambda token: requests.get(
+            f"{DRIVE_API}/{args.file_id}",
+            params={"fields": "name,size"},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=TIMEOUT,
+        ),
+        creds,
+        TOKEN,
     )
     meta.raise_for_status()
     meta = meta.json()
@@ -72,20 +66,22 @@ def main():
     with open(part, "ab") as f:
         while pos < size:
             end = min(pos + CHUNK - 1, size - 1)
-            headers = {
-                "Authorization": f"Bearer {creds.token}",
-                "Range": f"bytes={pos}-{end}",
-            }
 
             try:
-                r = requests.get(url, params=params, headers=headers, stream=True, timeout=TIMEOUT)
-
-                # 401 になったら token 更新して1回だけやり直す（最小限）
-                if r.status_code == 401 and creds.refresh_token:
-                    creds.refresh(Request())
-                    Path(TOKEN).write_text(creds.to_json())
-                    headers["Authorization"] = f"Bearer {creds.token}"
-                    r = requests.get(url, params=params, headers=headers, stream=True, timeout=TIMEOUT)
+                r = request_with_refresh(
+                    lambda token: requests.get(
+                        url,
+                        params=params,
+                        headers={
+                            "Authorization": f"Bearer {token}",
+                            "Range": f"bytes={pos}-{end}",
+                        },
+                        stream=True,
+                        timeout=TIMEOUT,
+                    ),
+                    creds,
+                    TOKEN,
+                )
 
                 r.raise_for_status()
 

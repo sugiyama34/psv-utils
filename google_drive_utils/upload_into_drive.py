@@ -1,23 +1,18 @@
 #!/usr/bin/env python3
 import argparse
-import os
 import sys
 from pathlib import Path
 
 import requests
 from tqdm import tqdm
 
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
+from google_auth import get_drive_credentials, request_with_refresh
 
 
 def main():
-    SCOPES = ["https://www.googleapis.com/auth/drive.file"]
     CREDENTIALS = "secrets/credentials.json"
     TOKEN = "secrets/token.json"
 
-    DRIVE_API = "https://www.googleapis.com/drive/v3/files"
     UPLOAD_API = "https://www.googleapis.com/upload/drive/v3/files"
     CHUNK = 32 * 1024 * 1024  # 32MB chunks for resumable upload
     TIMEOUT = (10, 60)  # (connect, read)
@@ -33,66 +28,39 @@ def main():
         print(f"[ERROR] File not found: {file_path}")
         sys.exit(1)
 
-    if not os.path.exists(CREDENTIALS):
+    # Authentication (shared token with download)
+    try:
+        creds = get_drive_credentials(
+            port=args.port, credentials_path=CREDENTIALS, token_path=TOKEN
+        )
+    except FileNotFoundError:
         print(f"[ERROR] File not found: {CREDENTIALS}")
         sys.exit(1)
-
-    # Authentication
-    creds = None
-    if os.path.exists(TOKEN):
-        creds = Credentials.from_authorized_user_file(TOKEN, SCOPES)
-        # Check if token has the required scopes
-        if not creds.has_scopes(SCOPES):
-            print(f"[INFO] Token has different scopes. Re-authenticating...")
-            os.remove(TOKEN)
-            creds = None
-    
-    if creds and creds.expired and creds.refresh_token:
-        try:
-            creds.refresh(Request())
-            Path(TOKEN).write_text(creds.to_json())
-        except Exception as e:
-            print(f"[INFO] Token refresh failed: {e}. Re-authenticating...")
-            os.remove(TOKEN)
-            creds = None
-    
-    if not creds or not creds.valid:
-        flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS, SCOPES)
-        creds = flow.run_local_server(
-            open_browser=False, host="localhost", bind_addr="0.0.0.0", port=int(args.port)
-        )
-        Path(TOKEN).write_text(creds.to_json())
 
     file_size = file_path.stat().st_size
     file_name = file_path.name
 
     # Step 1: Initiate resumable upload
     metadata = {"name": file_name, "parents": [args.folder_id]}
-    headers = {
-        "Authorization": f"Bearer {creds.token}",
-        "Content-Type": "application/json; charset=UTF-8",
-        "X-Upload-Content-Length": str(file_size),
-    }
 
-    init_response = requests.post(
-        f"{UPLOAD_API}?uploadType=resumable",
-        json=metadata,
-        headers=headers,
-        timeout=TIMEOUT,
+    init_response = request_with_refresh(
+        lambda token: requests.post(
+            f"{UPLOAD_API}?uploadType=resumable&supportsAllDrives=true",
+            json=metadata,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json; charset=UTF-8",
+                "X-Upload-Content-Length": str(file_size),
+            },
+            timeout=TIMEOUT,
+        ),
+        creds,
+        TOKEN,
     )
 
-    # Handle token refresh if needed
-    if init_response.status_code == 401 and creds.refresh_token:
-        creds.refresh(Request())
-        Path(TOKEN).write_text(creds.to_json())
-        headers["Authorization"] = f"Bearer {creds.token}"
-        init_response = requests.post(
-            f"{UPLOAD_API}?uploadType=resumable",
-            json=metadata,
-            headers=headers,
-            timeout=TIMEOUT,
-        )
-
+    if not init_response.ok:
+        print(f"[ERROR] Init upload failed with status {init_response.status_code}")
+        print(f"        Response: {init_response.text}")
     init_response.raise_for_status()
     upload_url = init_response.headers["Location"]
 
